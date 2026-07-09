@@ -7,6 +7,7 @@ Built with PyQt5, Mutant‑Suite provides a clean UI for crafting adversarial pi
 ✨ Features
 
 🔥 Multi‑Stage Prompt Chain
+
 Create up to 10 prompt slots, each representing a stage in your adversarial pipeline.
 
 Save prompts into slots
@@ -24,6 +25,7 @@ Run the entire chain sequentially across models
 This enables reproducible red‑team workflows and multi‑step mutation sequences.
 
 🧬 Mutation Modules
+
 Mutant‑Suite includes a growing library of adversarial mutation tools:
 
 Reverse Mode
@@ -67,6 +69,7 @@ Let’s Play Pretend (role‑based prompt transformation)
 Each module provides unique adversarial transformations useful for fuzzing, obfuscation, and stress‑testing model safety filters.
 
 🤖 Dual Model Runner
+
 Mutant‑Suite supports two simultaneous model panels for A/B comparison.
 
 Load Model A and Model B
@@ -84,6 +87,7 @@ Unified SHOW MODELS toggle button
 This allows rapid comparison of model behavior under adversarial conditions.
 
 🧹 Clean, Modern UI
+
 Dark theme
 
 Color‑coded buttons (red = destructive, purple = utility, orange = active slot)
@@ -99,6 +103,7 @@ Bottom toolbar for global actions
 Mutant‑Suite is designed for clarity and speed — essential for red‑team workflows.
 
 🚀 Getting Started
+
 Requirements
 Python 3.10+
 
@@ -122,6 +127,7 @@ bash
 python mutantSuiteMain.py
 
 🧪 Red‑Team Use Cases
+
 Mutant‑Suite is designed for:
 
 Adversarial prompt generation
@@ -141,11 +147,14 @@ Fuzzing and obfuscation experiments
 It is a practical tool for AI safety evaluators and red‑team analysts.
 
 📦 Roadmap (v0.3+)
+
 Planned enhancements:
 
 Export / Import prompt chains
 
 JSON support
+
+Feature suggestions welcome
 
 📝 License
 No license
