@@ -4,7 +4,9 @@ Mutant‑Suite is a desktop application designed for LLM red‑teamers, adversar
 
 Built with PyQt5, Mutant‑Suite provides a clean UI for crafting adversarial pipelines, running multi‑stage transformations, and comparing model outputs side‑by‑side.
 
+
 ✨ Features
+
 
 🔥 Multi‑Stage Prompt Chain
 
@@ -23,6 +25,7 @@ Empty slot selection auto‑clears input/output boxes
 Run the entire chain sequentially across models
 
 This enables reproducible red‑team workflows and multi‑step mutation sequences.
+
 
 🧬 Mutation Modules
 
@@ -68,6 +71,7 @@ Let’s Play Pretend (role‑based prompt transformation)
 
 Each module provides unique adversarial transformations useful for fuzzing, obfuscation, and stress‑testing model safety filters.
 
+
 🤖 Dual Model Runner
 
 Mutant‑Suite supports two simultaneous model panels for A/B comparison.
@@ -86,6 +90,7 @@ Unified SHOW MODELS toggle button
 
 This allows rapid comparison of model behavior under adversarial conditions.
 
+
 🧹 Clean, Modern UI
 
 Dark theme
@@ -101,6 +106,7 @@ Right‑panel input/output boxes
 Bottom toolbar for global actions
 
 Mutant‑Suite is designed for clarity and speed — essential for red‑team workflows.
+
 
 🚀 Getting Started
 
@@ -126,6 +132,7 @@ Run the application:
 bash
 python mutantSuiteMain.py
 
+
 🧪 Red‑Team Use Cases
 
 Mutant‑Suite is designed for:
@@ -146,6 +153,7 @@ Fuzzing and obfuscation experiments
 
 It is a practical tool for AI safety evaluators and red‑team analysts.
 
+
 📦 Roadmap (v0.3+)
 
 Planned enhancements:
@@ -163,6 +171,3 @@ No license
 Mutant‑Suite is developed by Claire, AI Safety & Evaluation Analyst, multimedia artist, and red‑team enthusiast.
 
 
-Screenshot layout for your repo
-
-Just tell me what you want next.
