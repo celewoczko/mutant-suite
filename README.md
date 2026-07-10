@@ -1,42 +1,173 @@
-# mutant-suite
+Mutant‑Suite
+A Multi‑Model Adversarial Prompt Mutation & Red‑Team Evaluation Toolkit
+Mutant‑Suite is a desktop application designed for LLM red‑teamers, adversarial testers, and AI safety researchers who need a fast, flexible environment for generating, mutating, chaining, and evaluating prompts across multiple models.
 
-A dark‑mode adversarial text mutation toolkit for stress‑testing language models.
+Built with PyQt5, Mutant‑Suite provides a clean UI for crafting adversarial pipelines, running multi‑stage transformations, and comparing model outputs side‑by‑side.
 
-Mutant‑Suite is a desktop application built with PyQt5 that generates adversarial text variants using a wide range of mutation modes — spacing noise models, Unicode perturbations, emoji injection, leetspeak, glitch artifacts, case‑chaos transformations, and more. It’s designed as a hands‑on sandbox for LLM red‑teamers, prompt engineers, and researchers who need fast, controllable ways to distort text and probe model robustness.
-
-Version 1 ships with a fully functional UI, modular tool panels, and real‑time previews that make it easy to craft, inspect, and iterate on adversarial inputs.
 
 ✨ Features
-🔁 Reverse Mode
-Reverse words, letters, or both.
 
-🧪 Space Randomizer
-Apply statistical noise models to spacing:
-Gaussian, Uniform, Poisson, Exponential, Bernoulli, Gamma, Beta.
 
-💻 Code Infuser
-Inject code‑like syntax into text using multiple languages (Python, JS, C++, Rust, etc.).
+🔥 Multi‑Stage Prompt Chain
 
-😀 Emoji Injector
-Build custom emoji strings and inject them into text.
+Create up to 10 prompt slots, each representing a stage in your adversarial pipeline.
 
-🔡 Case Chaos
-Uppercase, lowercase, title case, sPoNgEbOb case, or full randomization.
+Save prompts into slots
 
-🌀 Garbler
-Zalgo text, glitch characters, digital noise.
+Clear individual slots
 
-❗ Punc Rock
-Explosive punctuation, chaotic punctuation, ASCII art, overload modes.
+Default active slot = Prompt 1
 
-✒️ Fancifier
-Transform text into fancy Unicode fonts (cursive, fullwidth, script, bold mono).
+Tangerine‑orange highlight for active slot
 
-🖤 Emo Phase
-Blackletter, dramatic tone, poetic sadness, full emo meltdown.
+Empty slot selection auto‑clears input/output boxes
 
-🌍 Worldly Aesthetics
-Inject characters from Japanese, Korean, Chinese, Russian, Hindi, Aramaic sets.
+Run the entire chain sequentially across models
 
-🧊 Zero Character
-Zero‑width space, joiner, non‑joiner, and no‑break characters.
+This enables reproducible red‑team workflows and multi‑step mutation sequences.
+
+
+🧬 Mutation Modules
+
+Mutant‑Suite includes a growing library of adversarial mutation tools:
+
+Reverse Mode
+
+Space Randomizer
+
+Code Infuser
+
+Emoji Injector
+
+Case Chaos
+
+Garbler
+
+Punctuation Mutators
+
+Fancy Font Mutators
+
+Binary Mode
+
+Leetspeak (Classic, Aggressive, Symbolic)
+
+Emo Phase
+
+Zero‑Width Character Injection
+
+Worldly Aesthetics (Japanese, Korean, Chinese, Russian, Hindi, Aramaic)
+
+Markov Mutator
+
+Morse Code Mode
+
+Phonetic Mutator
+
+Word Shredder
+
+Fantasy Prologue Generator
+
+Let’s Play Pretend (role‑based prompt transformation)
+
+Each module provides unique adversarial transformations useful for fuzzing, obfuscation, and stress‑testing model safety filters.
+
+
+🤖 Dual Model Runner
+
+Mutant‑Suite supports two simultaneous model panels for A/B comparison.
+
+Load Model A and Model B
+
+Run both models on any prompt
+
+View outputs side‑by‑side
+
+Conversation logs for each model
+
+Failure‑mode tagging for quick triage
+
+Unified SHOW MODELS toggle button
+
+This allows rapid comparison of model behavior under adversarial conditions.
+
+
+🧹 Clean, Modern UI
+
+Dark theme
+
+Color‑coded buttons (red = destructive, purple = utility, orange = active slot)
+
+Collapsible prompt chain toolbar
+
+Organized left‑panel mutation list
+
+Right‑panel input/output boxes
+
+Bottom toolbar for global actions
+
+Mutant‑Suite is designed for clarity and speed — essential for red‑team workflows.
+
+
+🚀 Getting Started
+
+Requirements
+Python 3.10+
+
+PyQt5
+
+Ollama (optional, for local model execution)
+
+Installation
+Clone the repository:
+
+bash
+git clone https://github.com/celewoczko/mutant-suite.git
+cd MutantSuite
+Install dependencies:
+
+bash
+pip install -r requirements.txt
+Run the application:
+
+bash
+python mutantSuiteMain.py
+
+
+🧪 Red‑Team Use Cases
+
+Mutant‑Suite is designed for:
+
+Adversarial prompt generation
+
+Multi‑stage mutation pipelines
+
+Safety filter stress‑testing
+
+Model comparison (A/B testing)
+
+Hallucination detection
+
+Failure‑mode classification
+
+Fuzzing and obfuscation experiments
+
+It is a practical tool for AI safety evaluators and red‑team analysts.
+
+
+📦 Roadmap (v0.3+)
+
+Planned enhancements:
+
+Export / Import prompt chains
+
+JSON support
+
+Feature suggestions welcome
+
+📝 License
+No license
+
+💬 Author
+Mutant‑Suite is developed by Claire, AI Safety & Evaluation Analyst, multimedia artist, and red‑team enthusiast.
+
+
