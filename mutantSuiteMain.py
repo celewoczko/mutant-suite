@@ -16,6 +16,17 @@ import datetime
 import subprocess
 import unicodedata
 
+import sys, os
+
+import sys, os
+
+def resource_path(relative_path):
+    base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_path, relative_path)
+
+
+
+
 WORLDLY_SETS = {
     "Japanese": list("あいうえおかきくけこさしすせそたちつてとなにぬねのまみむめもやゆよらりるれろわをんアイウエオカキクケコサシスセソタチツテトナニヌネノマミムメモヤユヨラリルレロワヲン"),
     "Korean": list("가나다라마바사아자차카타파하거너더러머버서어저처커터퍼허"),
@@ -583,7 +594,9 @@ class MutantSuite(QWidget):
         self.setWindowTitle("Mutant‑Suite")
         self.setGeometry(200, 100, 1200, 700)
         self.setStyleSheet("background-color: #7b7b7b;")
-        self.setWindowIcon(QIcon("mutantsuite_16.ico"))
+        self.setWindowIcon(QIcon(resource_path("assets/mutantsuite_16.ico")))
+
+
 
         self.active_workers = []
 
@@ -3187,12 +3200,16 @@ def start_main_window(app, splash):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
-    pixmap = QPixmap("mutantSuiteSplash.png")
+    pixmap = QPixmap(resource_path("assets/mutantSuiteSplash.png"))
+
     splash = MutantSplashScreen(pixmap)
     splash.show()
     app.processEvents()
 
     QTimer.singleShot(5000, lambda: start_main_window(app, splash))
+    pixmap = QPixmap(resource_path("assets/mutantSuiteSplash.png"))
+    icon = QIcon(resource_path("assets/mutantsuite_64.ico"))
+    icon = QIcon(resource_path("assets/mutantsuite_16.ico"))
 
     sys.exit(app.exec_())
 
