@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
     QTextEdit, QLabel, QScrollArea, QComboBox, QFrame, QCheckBox,
     QFileDialog, QRadioButton, QGridLayout, QSizePolicy, QDialog,
-    QMessageBox, QSplashScreen,
+    QMessageBox, QSplashScreen, QProgressBar, QListWidget
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -15,6 +15,9 @@ import numpy as np
 import datetime
 import subprocess
 import unicodedata
+import json
+import urllib.error
+import urllib.request
 
 import sys, os
 
@@ -543,8 +546,11 @@ class ModelWorker(QThread):
 
 
 class ModelRunnerPanel(QFrame):
+    refresh_requested = pyqtSignal()
+
     def __init__(self, title="Model Runner"):
         super().__init__()
+
         self.setStyleSheet("""
             QFrame {
                 background-color: #2b2b2b;
@@ -557,9 +563,10 @@ class ModelRunnerPanel(QFrame):
 
         # Title
         lbl = QLabel(title)
-        lbl.setStyleSheet("color: white; font-size: 18px; font-weight: bold;")
+        lbl.setStyleSheet(
+            "color: white; font-size: 18px; font-weight: bold;"
+        )
         layout.addWidget(lbl)
-
 
         # Model selector
         self.selector = QComboBox()
@@ -567,21 +574,56 @@ class ModelRunnerPanel(QFrame):
             "Ollama: llama3",
             "Ollama: mistral",
             "Ollama: phi3",
-            "Custom (path)"
         ])
-        self.selector.setStyleSheet("color: white; background-color: #333;")
+        self.selector.setStyleSheet("""
+            QComboBox {
+                color: white;
+                background-color: #333;
+                padding: 6px;
+            }
+        """)
         layout.addWidget(self.selector)
+
+        # Refresh/import models button
+        self.refresh_models_btn = QPushButton("Refresh Local Models")
+        self.refresh_models_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #555;
+                color: white;
+                padding: 6px;
+                border-radius: 7px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #777;
+            }
+        """)
+        self.refresh_models_btn.clicked.connect(self.refresh_requested.emit)
+        layout.addWidget(self.refresh_models_btn)
+
+        # Connection status
+        self.status_label = QLabel(
+            "Ollama models loaded. LM Studio not checked."
+        )
+        self.status_label.setWordWrap(True)
+        self.status_label.setStyleSheet(
+            "color: #bbbbbb; font-size: 11px;"
+        )
+        layout.addWidget(self.status_label)
 
         # Conversation log
         self.log = QTextEdit()
         self.log.setReadOnly(True)
-        self.log.setStyleSheet("color: white; background-color: #1e1e1e;")
+        self.log.setStyleSheet("""
+            QTextEdit {
+                color: white;
+                background-color: #1e1e1e;
+            }
+        """)
         layout.addWidget(self.log)
 
     def append(self, text):
         self.log.append(text)
-
-from PyQt5.QtWidgets import QDialog, QVBoxLayout, QLabel, QProgressBar
 
 class ChainProgressDialog(QDialog):
     def __init__(self, total_slots, parent=None):
@@ -626,13 +668,14 @@ class MutantSuite(QWidget):
         self.setStyleSheet("background-color: #7b7b7b;")
         self.setWindowIcon(QIcon(resource_path("assets/mutantsuite_16.ico")))
 
-
-
         self.active_workers = []
 
         self.chain_index = 0
         self.chain_running = False
         self.chain_waiting = 0
+        self.chain_dialog = None
+
+        self.slot_mutation_histories = [[] for _ in range(12)]
 
         # ---------------------------------------------------------
         # 3D array: 12 slots, each storing [input, output, filename]
@@ -878,6 +921,74 @@ class MutantSuite(QWidget):
         scroll_area.setWidget(scroll_content)
         left_panel.addWidget(scroll_area)
 
+        # ---------------------------------------------------------
+        # MUTATION HISTORY PANEL
+        # ---------------------------------------------------------
+        self.history_container = QFrame()
+        self.history_container.setMinimumWidth(190)
+        self.history_container.setMaximumWidth(260)
+        self.history_container.setStyleSheet("""
+            QFrame {
+                background-color: #303030;
+                border-radius: 10px;
+            }
+        """)
+
+        history_layout = QVBoxLayout(self.history_container)
+
+        history_title = QLabel("Mutation History")
+        history_title.setAlignment(Qt.AlignCenter)
+        history_title.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                padding: 6px;
+            }
+        """)
+        history_layout.addWidget(history_title)
+
+        self.mutation_history_list = QListWidget()
+        self.mutation_history_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1e;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 5px;
+            }
+
+            QListWidget::item {
+                padding: 7px;
+                border-bottom: 1px solid #444;
+            }
+
+            QListWidget::item:selected {
+                background-color: #c83270;
+            }
+        """)
+        history_layout.addWidget(self.mutation_history_list)
+
+        clear_history_btn = QPushButton("Clear History")
+        clear_history_btn.clicked.connect(self.clear_mutation_history)
+        history_layout.addWidget(clear_history_btn)
+
+        hide_history_btn = QPushButton("◀ Hide History")
+        hide_history_btn.clicked.connect(self.hide_mutation_history)
+        history_layout.addWidget(hide_history_btn)
+
+        # Small button that remains visible while the panel is hidden
+        self.history_toggle_tab = QPushButton("▶")
+        self.history_toggle_tab.setFixedWidth(28)
+        self.history_toggle_tab.setToolTip("Show Mutation History")
+        self.history_toggle_tab.clicked.connect(self.show_mutation_history)
+        self.history_toggle_tab.hide()
+
+        # Add history first, then its collapsed tab, then mutation modules
+        main_layout.addWidget(self.history_container)
+        main_layout.addWidget(self.history_toggle_tab)
+
+        # Your existing line
         main_layout.addWidget(left_container)
 
         # ---------------------------------------------------------
@@ -951,6 +1062,9 @@ class MutantSuite(QWidget):
         self.runnerA = ModelRunnerPanel("Model Runner A")
         self.runnerB = ModelRunnerPanel("Model Runner B")
 
+        self.runnerA.refresh_requested.connect(self.refresh_local_models)
+        self.runnerB.refresh_requested.connect(self.refresh_local_models)
+
         # Add them side-by-side to the right panel
         self.right_panel.addWidget(self.runnerA)
         self.right_panel.addWidget(self.runnerB)
@@ -1017,6 +1131,48 @@ class MutantSuite(QWidget):
 
     def strip_non_ascii(text):
         return "".join(ch for ch in text if ord(ch) < 128)
+
+    def refresh_mutation_history_display(self):
+        self.mutation_history_list.clear()
+
+        if self.active_prompt_slot is None:
+            return
+
+        history = self.slot_mutation_histories[self.active_prompt_slot]
+
+        for number, mutation_name in enumerate(history, start=1):
+            self.mutation_history_list.addItem(
+                f"{number}. {mutation_name}"
+            )
+
+    def record_mutation(self, mutation_name):
+        if self.active_prompt_slot is None:
+            QMessageBox.warning(
+                self,
+                "No Slot Selected",
+                "Please select a prompt slot before applying a mutation."
+            )
+            return
+
+        history = self.slot_mutation_histories[self.active_prompt_slot]
+        history.append(mutation_name)
+
+        self.refresh_mutation_history_display()
+
+    def clear_mutation_history(self):
+        if self.active_prompt_slot is None:
+            return
+
+        self.slot_mutation_histories[self.active_prompt_slot].clear()
+        self.refresh_mutation_history_display()
+
+    def hide_mutation_history(self):
+        self.history_container.hide()
+        self.history_toggle_tab.show()
+
+    def show_mutation_history(self):
+        self.history_container.show()
+        self.history_toggle_tab.hide()
 
     def save_prompt_to_slot(self):
         if self.active_prompt_slot is None:
@@ -1306,32 +1462,44 @@ class MutantSuite(QWidget):
         # -----------------------------
 
         if module_name == "HOMOGLYPH HELPER":
+
+            # Disconnect old signals if the module is being rebuilt
+            try:
+                self.homoglyph_dropdown.currentTextChanged.disconnect()
+            except Exception:
+                pass
+
+            # Create dropdown
             self.homoglyph_dropdown = QComboBox()
             dropdown = self.homoglyph_dropdown
+
             dropdown.addItems([chr(i) for i in range(ord('A'), ord('Z') + 1)])
 
             dropdown.currentTextChanged.connect(
-                lambda val: self.tool_settings["HOMOGLYPH HELPER"].update({"letter": val.lower()})
+                lambda _: None
             )
+
             dropdown.setStyleSheet("color: white; background-color: #333;")
 
-            layout.addWidget(QLabel("Select letter to replace:"))
-            layout.addWidget(dropdown)
+            label = QLabel("Select letter to replace:")
+            label.setStyleSheet("color: white;")
 
             apply_btn = QPushButton("Apply Homoglyph Helper")
             apply_btn.setStyleSheet("""
-                            QPushButton {
-                                background-color: #444;
-                                color: white;
-                                padding: 8px;
-                                border-radius: 8px;
-                            }
-                            QPushButton:hover {
-                                background-color: #666;
-                            }
-                        """)
+                QPushButton {
+                    background-color: #444;
+                    color: white;
+                    padding: 8px;
+                    border-radius: 8px;
+                }
+                QPushButton:hover {
+                    background-color: #666;
+                }
+            """)
 
             apply_btn.clicked.connect(self.apply_homoglyph_helper)
+
+            inner.addWidget(label)
             inner.addWidget(dropdown)
             inner.addWidget(apply_btn)
 
@@ -2096,12 +2264,13 @@ class MutantSuite(QWidget):
             output += char + (" " * get_spaces())
 
         self.output_box.setPlainText(output)
+        self.record_mutation(f"Space Randomizer — {noise_type}")
 
     # -----------------------------
     # Code Infuser Logic (STACKING ENABLED)
     # -----------------------------
     def apply_code_infuser(self):
-        text = self.input_box.toPlainText()
+        text = self.output_box.toPlainText() or self.input_box.toPlainText()
         if not text.strip():
             self.output_box.setPlainText("")
             return
@@ -2230,12 +2399,12 @@ class MutantSuite(QWidget):
         transformed = [formatter(w) for w in words]
 
         self.output_box.setPlainText(" ".join(transformed))
+        self.record_mutation(f"Code Infuser — {selected_lang}")
 
     # -----------------------------
     # Apply Reverse Mode (STACKING ENABLED)
     # -----------------------------
     def apply_reverse_mode(self):
-        # Read from output first, fallback to input
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         output = text
 
@@ -2247,6 +2416,9 @@ class MutantSuite(QWidget):
             output = " ".join(word[::-1] for word in output.split())
 
         self.output_box.setPlainText(output)
+
+        # Add this
+        self.record_mutation("Reverse Mode")
 
     # -----------------------------
     # Emoji Injector logic
@@ -2268,6 +2440,8 @@ class MutantSuite(QWidget):
             output_words.append(w)
 
         self.output_box.setPlainText(" ".join(output_words))
+
+        self.record_mutation("Emoji Injector")
 
     def add_emoji_to_string(self, emoji):
         if not hasattr(self, "emoji_string"):
@@ -2329,6 +2503,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(" ".join(output_words))
 
+        self.record_mutation(f"Case Chaos — {mode}")
+
     def apply_garbler(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
 
@@ -2389,6 +2565,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(output)
 
+        self.record_mutation(f"Garbler — {mode}")
+
     # -----------------------------
     # Punc rock logic
     # -----------------------------
@@ -2429,6 +2607,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(" ".join(output_words))
 
+        self.record_mutation(f"Punc Rock — {mode}")
+
     def apply_fancifier(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
 
@@ -2455,60 +2635,79 @@ class MutantSuite(QWidget):
         output = "".join(fancy_char(c) for c in text)
         self.output_box.setPlainText(output)
 
+        self.record_mutation(f"Fancifier — {style}")
+
     def apply_emo_phase(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         words = text.split()
 
-        # Determine mode
         mode = None
         for name, rb in self.emo_radios.items():
             if rb.isChecked():
                 mode = name
                 break
 
-        # BLACKLETTER FONT
+        if mode is None:
+            return
+
         def blackletter_char(c):
             if c.isalpha():
-                idx = ord(c.lower()) - ord('a')
+                idx = ord(c.lower()) - ord("a")
+
                 if 0 <= idx < 26:
                     mapped = BLACKLETTER_MAP[idx]
                     return mapped.upper() if c.isupper() else mapped
+
             return c
 
         if mode == "Blackletter":
-            output = "".join(blackletter_char(c) for c in text)
-            self.output_box.setPlainText(output)
-            return
+            output = "".join(
+                blackletter_char(c)
+                for c in text
+            )
 
-        # DRAMATIC TONE
-        if mode == "Dramatic Tone":
+        elif mode == "Dramatic Tone":
             output_words = []
-            for w in words:
+
+            for word in words:
                 if random.random() < 0.3:
-                    w = w + " " + random.choice(DRAMATIC_PHRASES)
-                output_words.append(w)
-            self.output_box.setPlainText(" ".join(output_words))
-            return
+                    word += " " + random.choice(DRAMATIC_PHRASES)
 
-        # POETIC SADNESS
-        if mode == "Poetic Sadness":
+                output_words.append(word)
+
+            output = " ".join(output_words)
+
+        elif mode == "Poetic Sadness":
             output_words = []
-            for w in words:
+
+            for word in words:
                 if random.random() < 0.25:
-                    output_words.append(random.choice(POETIC_SADNESS))
-                output_words.append(w)
-            self.output_box.setPlainText(" ".join(output_words))
-            return
+                    output_words.append(
+                        random.choice(POETIC_SADNESS)
+                    )
 
-        # FULL EMO MELTDOWN
-        if mode == "Full Emo Meltdown":
+                output_words.append(word)
+
+            output = " ".join(output_words)
+
+        elif mode == "Full Emo Meltdown":
             output_words = []
-            for w in words:
+
+            for word in words:
                 if random.random() < 0.4:
-                    output_words.append(random.choice(EMO_MELTDOWN))
-                output_words.append(w.upper())
-            self.output_box.setPlainText(" ".join(output_words))
-            return
+                    output_words.append(
+                        random.choice(EMO_MELTDOWN)
+                    )
+
+                output_words.append(word.upper())
+
+            output = " ".join(output_words)
+
+        else:
+            output = text
+
+        self.output_box.setPlainText(output)
+        self.record_mutation(f"Emo Phase — {mode}")
 
     def apply_binary_mode(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
@@ -2551,6 +2750,8 @@ class MutantSuite(QWidget):
                 output_bits.append(c)
 
         self.output_box.setPlainText(" ".join(output_bits))
+
+        self.record_mutation(f"Binary mode — {mode}")
 
     def apply_zero_character(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
@@ -2596,6 +2797,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(output)
 
+        self.record_mutation(f"Zero Character — {mode}")
+
     def apply_leetspeak(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
 
@@ -2635,6 +2838,8 @@ class MutantSuite(QWidget):
 
         #self.output_box.setPlainText(transformed)
 
+        self.record_mutation(f"Leetspeak — {mode}")
+
     def apply_worldly_aesthetics(self):
         text = self.input_box.toPlainText()
         if not text.strip():
@@ -2660,6 +2865,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(transformed)
 
+        self.record_mutation(f"Worldly Aesthetics — {selected}")
+
     def apply_morse_mode(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         out = []
@@ -2674,6 +2881,8 @@ class MutantSuite(QWidget):
                 out.append(c)
 
         self.output_box.setPlainText(" ".join(out))
+
+        self.record_mutation("Morse Code Mode")
 
     def apply_phonetic_mutator(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
@@ -2694,6 +2903,8 @@ class MutantSuite(QWidget):
                 out += c
 
         self.output_box.setPlainText(out)
+
+        self.record_mutation(f"Phonetic Mutator — {strength}")
 
     def apply_word_shredder(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
@@ -2725,6 +2936,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(out)
 
+        self.record_mutation(f"Word shredder — {mode}")
+
     def apply_markov_mutator(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         words = text.split()
@@ -2752,6 +2965,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(" ".join(output))
 
+        self.record_mutation(f"Markov Mutator — Order {order}")
+
     def apply_fantasy_prologue(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         style = self.fantasy_style.currentText()
@@ -2765,6 +2980,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(prologue + text)
 
+        self.record_mutation(f"Fantasy Prologue — {style}")
+
     def apply_pretend_mode(self):
         text = self.output_box.toPlainText() or self.input_box.toPlainText()
         role = self.pretend_role.currentText()
@@ -2776,6 +2993,8 @@ class MutantSuite(QWidget):
 
         self.output_box.setPlainText(prefix + text)
 
+        self.record_mutation(f"Pretend Mode — {role}")
+
     def apply_homoglyph_helper(self):
         text = self.input_box.toPlainText()
 
@@ -2785,7 +3004,6 @@ class MutantSuite(QWidget):
             return
 
         glyphs = HOMOGLYPH_MAP[target]
-
         output = []
 
         for ch in text:
@@ -2795,6 +3013,10 @@ class MutantSuite(QWidget):
                 output.append(ch)
 
         self.output_box.setPlainText("".join(output))
+
+        self.record_mutation(
+            f"Homoglyph Helper — replaced '{target.upper()}'"
+        )
 
     def get_actual_model_name(self, raw):
         if raw.startswith("Ollama: "):
@@ -2815,6 +3037,149 @@ class MutantSuite(QWidget):
             return result.stdout.strip()
         except Exception as e:
             return f"[MODEL ERROR] {e}"
+
+    def get_ollama_models(self):
+        """
+        Return locally installed Ollama model names.
+        """
+        try:
+            result = subprocess.run(
+                ["ollama", "list"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=15
+            )
+
+            if result.returncode != 0:
+                return [], result.stderr.strip()
+
+            models = []
+
+            # First line is normally:
+            # NAME    ID    SIZE    MODIFIED
+            for line in result.stdout.splitlines()[1:]:
+                parts = line.split()
+
+                if parts:
+                    models.append(parts[0])
+
+            return models, None
+
+        except FileNotFoundError:
+            return [], "Ollama executable was not found."
+
+        except subprocess.TimeoutExpired:
+            return [], "Ollama model lookup timed out."
+
+        except Exception as error:
+            return [], str(error)
+
+    def get_lm_studio_models(self):
+        """
+        Return models exposed by LM Studio's OpenAI-compatible API.
+        """
+        request = urllib.request.Request(
+            "http://127.0.0.1:1234/v1/models",
+            method="GET",
+            headers={
+                "Accept": "application/json"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(request, timeout=5) as response:
+                payload = json.loads(
+                    response.read().decode("utf-8")
+                )
+
+            models = []
+
+            for model in payload.get("data", []):
+                model_id = model.get("id")
+
+                if model_id:
+                    models.append(model_id)
+
+            return models, None
+
+        except urllib.error.URLError:
+            return [], (
+                "LM Studio server is not available at "
+                "http://127.0.0.1:1234."
+            )
+
+        except json.JSONDecodeError:
+            return [], "LM Studio returned an invalid JSON response."
+
+        except Exception as error:
+            return [], str(error)
+
+    #--------------------------------------
+    # Refresh local models
+    #--------------------------------------
+
+    def refresh_local_models(self):
+        """
+        Refresh Ollama and LM Studio models in both runner dropdowns.
+        """
+        ollama_models, ollama_error = self.get_ollama_models()
+        lm_models, lm_error = self.get_lm_studio_models()
+
+        entries = []
+
+        for model_name in ollama_models:
+            entries.append(f"Ollama: {model_name}")
+
+        for model_name in lm_models:
+            entries.append(f"LM Studio: {model_name}")
+
+        if not entries:
+            QMessageBox.warning(
+                self,
+                "No Models Found",
+                "No Ollama or LM Studio models were found.\n\n"
+                f"Ollama: {ollama_error or 'No models installed'}\n"
+                f"LM Studio: {lm_error or 'No models available'}"
+            )
+            return
+
+        # Preserve the current selections when possible.
+        selection_a = self.runnerA.selector.currentText()
+        selection_b = self.runnerB.selector.currentText()
+
+        for runner in (self.runnerA, self.runnerB):
+            runner.selector.blockSignals(True)
+            runner.selector.clear()
+            runner.selector.addItems(entries)
+            runner.selector.blockSignals(False)
+
+        index_a = self.runnerA.selector.findText(selection_a)
+        index_b = self.runnerB.selector.findText(selection_b)
+
+        if index_a >= 0:
+            self.runnerA.selector.setCurrentIndex(index_a)
+
+        if index_b >= 0:
+            self.runnerB.selector.setCurrentIndex(index_b)
+
+        ollama_status = (
+            f"{len(ollama_models)} Ollama model(s)"
+            if ollama_models
+            else f"Ollama unavailable: {ollama_error}"
+        )
+
+        lm_status = (
+            f"{len(lm_models)} LM Studio model(s)"
+            if lm_models
+            else f"LM Studio unavailable: {lm_error}"
+        )
+
+        status = f"{ollama_status} | {lm_status}"
+
+        self.runnerA.status_label.setText(status)
+        self.runnerB.status_label.setText(status)
 
     # -----------------------------
     # Generate output (basic version)
@@ -2861,44 +3226,78 @@ class MutantSuite(QWidget):
             except Exception as e:
                 print(f"Error saving conversation: {e}")
 
-
     def run_both_models(self, prompt):
-        modelA = self.runnerA.selector.currentText().split("Ollama: ")[-1].strip()
-        modelB = self.runnerB.selector.currentText().split("Ollama: ")[-1].strip()
+        model_a = self.runnerA.selector.currentText().strip()
+        model_b = self.runnerB.selector.currentText().strip()
 
-        workerA = ModelWorker(modelA, prompt, self.run_model, self.runnerA)
-        workerB = ModelWorker(modelB, prompt, self.run_model, self.runnerB)
+        if not model_a or not model_b:
+            QMessageBox.warning(
+                self,
+                "Model Not Selected",
+                "Please select a model for both runners."
+            )
 
-        workerA.finished.connect(self.handle_model_finished)
-        workerB.finished.connect(self.handle_model_finished)
+            if self.chain_running:
+                self.chain_running = False
 
-        self.active_workers.append(workerA)
-        self.active_workers.append(workerB)
+                if self.chain_dialog:
+                    self.chain_dialog.close()
+                    self.chain_dialog = None
+                    self.active_workers = []
 
-        workerA.start()
-        workerB.start()
+                    self.chain_index = 0
+                    self.chain_running = False
+                    self.chain_waiting = 0
+                    self.chain_dialog = None
+
+            return
+
+        worker_a = ModelWorker(
+            model_a,
+            prompt,
+            self.run_model,
+            self.runnerA
+        )
+
+        worker_b = ModelWorker(
+            model_b,
+            prompt,
+            self.run_model,
+            self.runnerB
+        )
+
+        worker_a.finished.connect(self.handle_model_finished)
+        worker_b.finished.connect(self.handle_model_finished)
+
+        self.active_workers.extend([worker_a, worker_b])
+
+        worker_a.start()
+        worker_b.start()
 
     def handle_model_finished(self, output, runner_widget, prompt):
-        runner_widget.append(f"PROMPT:\n{prompt}\n\nOUTPUT:\n{output}\n")
+        model_selection = runner_widget.selector.currentText()
 
-        # Remove finished worker
-        sender = self.sender()
-        if sender in self.active_workers:
-            self.active_workers.remove(sender)
+        runner_widget.append(
+            f"MODEL: {model_selection}\n\n"
+            f"PROMPT:\n{prompt}\n\n"
+            f"OUTPUT:\n{output}\n"
+            "----------------------------------------\n"
+        )
 
-        # One model finished
-        self.chain_waiting -= 1
+        worker = self.sender()
 
-        # When BOTH models finish, move to next slot
+        if worker in self.active_workers:
+            self.active_workers.remove(worker)
+
+        # Only update chain counters during an active chain
+        if not self.chain_running:
+            return
+
+        self.chain_waiting = max(0, self.chain_waiting - 1)
+
         if self.chain_waiting == 0:
             self.chain_index += 1
             self.run_next_slot()
-
-    def update_runner_output(self, output, runner_widget, prompt):
-        runner_widget.append(
-            f"PROMPT:\n{prompt}\n\nOUTPUT:\n{output}\n"
-        )
-
     # --------------------------------------------------
     # Bottom toolbar buttons
     # --------------------------------------------------
@@ -2916,6 +3315,9 @@ class MutantSuite(QWidget):
         inp, out, filename = self.prompt_data[index]
         self.input_box.setPlainText(inp)
         self.output_box.setPlainText(out)
+
+        # Show only this slot's mutation history
+        self.refresh_mutation_history_display()
 
         # Update button colors
         for i, btn in enumerate(self.prompt_slot_buttons):
@@ -2979,56 +3381,226 @@ class MutantSuite(QWidget):
     #         self.run_both_models()
 
     def run_chain(self):
-        if self.chain_running:
+        # Do not start another chain while model workers are running
+        if self.active_workers:
+            QMessageBox.warning(
+                self,
+                "Models Busy",
+                "Please wait for the current model requests to finish."
+            )
             return
 
+        # Find slots that actually contain prompts
+        populated_slots = [
+            index
+            for index, slot in enumerate(self.prompt_data)
+            if slot[0].strip()
+        ]
+
+        if not populated_slots:
+            QMessageBox.warning(
+                self,
+                "No Prompts",
+                "There are no saved prompts to run."
+            )
+            return
+
+        # Reset all chain state before starting
         self.chain_running = True
         self.chain_index = 0
+        self.chain_waiting = 0
 
-        # Create and show progress dialog
+        if self.chain_dialog is not None:
+            self.chain_dialog.close()
+
         self.chain_dialog = ChainProgressDialog(12, self)
         self.chain_dialog.show()
 
         self.run_next_slot()
 
     def run_next_slot(self):
-        if self.chain_index >= 12:
-            self.chain_running = False
-
-            if self.chain_dialog:
-                self.chain_dialog.label.setText("Chain complete")
-                self.chain_dialog.progress.setValue(12)
-                self.chain_dialog.close()
-                self.chain_dialog = None
-
+        if not self.chain_running:
             return
 
-        prompt = self.prompt_data[self.chain_index][0].strip()
+        # Skip empty slots without recursive calls
+        while self.chain_index < len(self.prompt_data):
+            prompt = self.prompt_data[self.chain_index][0].strip()
 
-        if prompt == "":
+            if prompt:
+                break
+
             self.chain_index += 1
-            self.run_next_slot()
+
+        # End of chain
+        if self.chain_index >= len(self.prompt_data):
+            self.finish_chain()
             return
 
-        # Update progress dialog
-        if self.chain_dialog:
+        if self.chain_dialog is not None:
             self.chain_dialog.update_progress(self.chain_index + 1)
 
         self.chain_waiting = 2
         self.run_both_models(prompt)
 
-    def run_model(self, model_name, prompt):
+    def finish_chain(self):
+        self.chain_running = False
+        self.chain_waiting = 0
+
+        if self.chain_dialog is not None:
+            self.chain_dialog.progress.setValue(12)
+            self.chain_dialog.label.setText("Chain complete")
+
+            QTimer.singleShot(
+                500,
+                self.close_chain_dialog
+            )
+
+    def close_chain_dialog(self):
+        if self.chain_dialog is not None:
+            self.chain_dialog.close()
+            self.chain_dialog = None
+
+    def run_model(self, model_selection, prompt):
+        """
+        Route a prompt to Ollama or LM Studio according to the dropdown
+        selection.
+        """
+        if model_selection.startswith("Ollama: "):
+            model_name = model_selection.removeprefix("Ollama: ").strip()
+            return self.run_ollama_model(model_name, prompt)
+
+        if model_selection.startswith("LM Studio: "):
+            model_name = model_selection.removeprefix(
+                "LM Studio: "
+            ).strip()
+
+            return self.run_lm_studio_model(model_name, prompt)
+
+        return (
+            "[MODEL ERROR] Unknown model provider: "
+            f"{model_selection}"
+        )
+
+    def run_ollama_model(self, model_name, prompt):
+        """
+        Run a locally installed Ollama model.
+        """
         try:
             result = subprocess.run(
                 ["ollama", "run", model_name],
-                input=prompt.encode("utf-8"),  # send bytes safely
+                input=prompt,
                 capture_output=True,
-                creationflags = subprocess.CREATE_NO_WINDOW
+                text=True,
+                encoding="utf-8",
+                creationflags=subprocess.CREATE_NO_WINDOW,
+                timeout=300
             )
-            return result.stdout.decode("utf-8", errors="ignore").strip()
-        except Exception as e:
-            return f"[MODEL ERROR] {e}"
 
+            if result.returncode != 0:
+                error_message = result.stderr.strip()
+
+                return (
+                    "[OLLAMA ERROR] "
+                    f"{error_message or 'The model process failed.'}"
+                )
+
+            return result.stdout.strip()
+
+        except FileNotFoundError:
+            return "[OLLAMA ERROR] Ollama was not found."
+
+        except subprocess.TimeoutExpired:
+            return "[OLLAMA ERROR] The request timed out."
+
+        except Exception as error:
+            return f"[OLLAMA ERROR] {error}"
+
+    def run_lm_studio_model(self, model_name, prompt):
+        """
+        Run a model through LM Studio's OpenAI-compatible endpoint.
+        """
+        payload = {
+            "model": model_name,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            "temperature": 0.7,
+            "stream": False
+        }
+
+        encoded_payload = json.dumps(payload).encode("utf-8")
+
+        request = urllib.request.Request(
+            "http://127.0.0.1:1234/v1/chat/completions",
+            data=encoded_payload,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        )
+
+        try:
+            with urllib.request.urlopen(
+                    request,
+                    timeout=300
+            ) as response:
+                result = json.loads(
+                    response.read().decode("utf-8")
+                )
+
+            choices = result.get("choices", [])
+
+            if not choices:
+                return (
+                    "[LM STUDIO ERROR] The response contained "
+                    "no completion choices."
+                )
+
+            message = choices[0].get("message", {})
+            output = message.get("content")
+
+            if output is None:
+                return (
+                    "[LM STUDIO ERROR] The response contained "
+                    "no message content."
+                )
+
+            return output.strip()
+
+        except urllib.error.HTTPError as error:
+            try:
+                details = error.read().decode(
+                    "utf-8",
+                    errors="replace"
+                )
+            except Exception:
+                details = str(error)
+
+            return (
+                f"[LM STUDIO HTTP ERROR {error.code}] "
+                f"{details}"
+            )
+
+        except urllib.error.URLError:
+            return (
+                "[LM STUDIO ERROR] Cannot connect to LM Studio. "
+                "Start the local server in LM Studio's Developer tab."
+            )
+
+        except TimeoutError:
+            return "[LM STUDIO ERROR] The request timed out."
+
+        except json.JSONDecodeError:
+            return (
+                "[LM STUDIO ERROR] LM Studio returned invalid JSON."
+            )
+
+        except Exception as error:
+            return f"[LM STUDIO ERROR] {error}"
     def clear_active_slot(self):
         """
         Clears the currently selected prompt slot.
@@ -3089,6 +3661,7 @@ class MutantSuite(QWidget):
                 # Clear all slots
                 for i in range(12):
                     self.prompt_data[i] = ["", "", ""]
+                    self.slot_mutation_histories[i] = []
 
                 # Load JSON entries into prompt_data
                 for i, entry in enumerate(data):
@@ -3128,6 +3701,7 @@ class MutantSuite(QWidget):
 
         for i in range(12):
             self.prompt_data[i] = ["", "", ""]
+            self.slot_mutation_histories[i] = []
 
         for i, line in enumerate(lines):
             self.prompt_data[i][0] = line
@@ -3156,11 +3730,15 @@ class MutantSuite(QWidget):
 
         # Clear the slot data
         self.prompt_data[index] = ["", "", ""]
+        self.slot_mutation_histories[index].clear()
         self.slot_saved[index] = False
 
         # Reset the input/output boxes
         self.input_box.clear()
         self.output_box.clear()
+
+        # Clear the visible history
+        self.refresh_mutation_history_display()
 
         # Reset the slot button color (inactive unsaved = dark gray)
         self.prompt_slot_buttons[index].setStyleSheet("""
@@ -3196,6 +3774,10 @@ class MutantSuite(QWidget):
         self.prompt_data[next_index][0] = self.prompt_data[index][0]  # input
         self.prompt_data[next_index][1] = self.prompt_data[index][1]  # output
         self.prompt_data[next_index][2] = self.prompt_data[index][2]  # filename
+
+        self.slot_mutation_histories[next_index] = (
+            self.slot_mutation_histories[index].copy()
+        )
 
         # Mark duplicated slot as saved
         self.slot_saved[next_index] = True
